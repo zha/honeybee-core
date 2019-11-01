@@ -1,0 +1,37 @@
+honeybee package
+================
+
+Subpackages
+-----------
+
+.. toctree::
+
+    honeybee.writer
+
+Submodules
+----------
+
+.. toctree::
+
+   honeybee.aperture
+   honeybee.boundarycondition
+   honeybee.cli
+   honeybee.door
+   honeybee.extensionutil
+   honeybee.face
+   honeybee.facetype
+   honeybee.logutil
+   honeybee.model
+   honeybee.properties
+   honeybee.room
+   honeybee.search
+   honeybee.shade
+   honeybee.typing
+
+Module contents
+---------------
+
+.. automodule:: honeybee
+    :members:
+    :undoc-members:
+    :show-inheritance:

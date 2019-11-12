@@ -6,6 +6,7 @@ from .boundarycondition import boundary_conditions, Outdoors, Surface
 from .shade import Shade
 import honeybee.writer.aperture as writer
 
+from ladybug_geometry.geometry2d.pointvector import Vector2D
 from ladybug_geometry.geometry3d.pointvector import Point3D, Vector3D
 from ladybug_geometry.geometry3d.face import Face3D
 
@@ -198,6 +199,58 @@ class Aperture(_BaseWithShade):
     def perimeter(self):
         """Get the perimeter of the aperture."""
         return self._geometry.perimeter
+    
+    def horizontal_orientation(self, north_vector=Vector2D(0, 1)):
+        """Get a number between 0 and 360 for the orientation of the aperture in degrees.
+
+        0 = North, 90 = East, 180 = South, 270 = West
+
+        Args:
+            north_vector: A ladybug_geometry Vector2D for the north direction.
+                Default is the Y-axis (0, 1).
+        """
+        return math.degrees(
+            north_vector.angle_clockwise(Vector2D(self.normal.x, self.normal.y)))
+
+    def cardinal_direction(self, north_vector=Vector2D(0, 1)):
+        """Get text description for the cardinal direction that the aperture is pointing.
+
+        Will be one of the following: ('North', 'East', 'South', 'West')
+
+        Args:
+            north_vector: A ladybug_geometry Vector2D for the north direction.
+                Default is the Y-axis (0, 1).
+        """
+        orient = self.horizontal_orientation(north_vector)
+        if orient <= 45 or orient > 315:
+            return 'North'
+        elif orient <= 135:
+            return 'East'
+        elif orient <= 225:
+            return 'South'
+        else:
+            return 'West'
+    
+    def add_prefix(self, prefix):
+        """Change the name of this object and all child objects by inserting a prefix.
+        
+        This is particularly useful in workflows where you duplicate and edit
+        a starting object and then want to combine it with the original object
+        into one Model (like making a model of repeated rooms) since all objects
+        within a Model must have unique names.
+
+        Args:
+            prefix: Text that will be inserted at the start of this object's
+                (and child objects') name and display_name. It is recommended
+                that this name be short to avoid maxing out the 100 allowable
+                characters for honeybee names.
+        """
+        self.name = '{}_{}'.format(prefix, self.display_name)
+        self._add_prefix_shades(prefix)
+        if isinstance(self._boundary_condition, Surface):
+            new_bc_objs = ('{}_{}'.format(prefix, adj_name) for adj_name
+                           in self._boundary_condition._boundary_condition_objects)
+            self._boundary_condition = Surface(new_bc_objs, True)
 
     def set_adjacency(self, other_aperture):
         """Set this aperture to be adjacent to another.
@@ -232,11 +285,14 @@ class Aperture(_BaseWithShade):
                 than the tolerance. Default is 0, which will always yeild an overhang.
             base_name: Optional base name for the shade objects. If None, the default
                 is InOverhang or OutOverhang depending on whether indoor is True.
+        
+        Returns:
+            A list of the new Shade objects that have been generated.
         """
         if base_name is None:
             base_name = 'InOverhang' if indoor else 'OutOverhang'
-        self.louvers_by_count(1, depth, angle=angle, indoor=indoor,
-                              tolerance=tolerance, base_name=base_name)
+        return self.louvers_by_count(1, depth, angle=angle, indoor=indoor,
+                                     tolerance=tolerance, base_name=base_name)
 
     def right_fin(self, depth, angle=0, indoor=False, tolerance=0, base_name=None):
         """Add a single vertical fin on the right side of this Aperture.
@@ -252,11 +308,15 @@ class Aperture(_BaseWithShade):
                 than the tolerance. Default is 0, which will always yeild a fin.
             base_name: Optional base name for the shade objects. If None, the default
                 is InRightFin or OutRightFin depending on whether indoor is True.
+        
+        Returns:
+            A list of the new Shade objects that have been generated.
         """
         if base_name is None:
             base_name = 'InRightFin' if indoor else 'OutRightFin'
-        self.louvers_by_count(1, depth, angle=angle, contour_vector=Vector3D(1, 0, 0),
-                              indoor=indoor, tolerance=tolerance, base_name=base_name)
+        return self.louvers_by_count(
+            1, depth, angle=angle, contour_vector=Vector2D(1, 0),
+            indoor=indoor, tolerance=tolerance, base_name=base_name)
 
     def left_fin(self, depth, angle=0, indoor=False, tolerance=0, base_name=None):
         """Add a single vertical fin on the left side of this Aperture.
@@ -272,12 +332,16 @@ class Aperture(_BaseWithShade):
                 than the tolerance. Default is 0, which will always yeild a fin.
             base_name: Optional base name for the shade objects. If None, the default
                 is InLeftFin or OutLeftFin depending on whether indoor is True.
+        
+        Returns:
+            A list of the new Shade objects that have been generated.
         """
         if base_name is None:
             base_name = 'InLeftFin' if indoor else 'OutLeftFin'
-        self.louvers_by_count(1, depth, angle=angle, contour_vector=Vector3D(1, 0, 0),
-                              flip_start_side=True, indoor=indoor,
-                              tolerance=tolerance, base_name=base_name)
+        return self.louvers_by_count(
+            1, depth, angle=angle, contour_vector=Vector2D(1, 0),
+            flip_start_side=True, indoor=indoor, tolerance=tolerance,
+            base_name=base_name)
 
     def extruded_border(self, depth, indoor=False, base_name=None):
         """Add a series of Shade objects to this Aperture that form an extruded border.
@@ -285,10 +349,13 @@ class Aperture(_BaseWithShade):
         Args:
             depth: A number for the extrusion depth.
             indoor: Boolean for whether the extrusion should be generated facing the
-                opposite direction of the aperture normal (typically meaning
-                indoor geometry). Default: False.
+                opposite direction of the aperture normal and added to the Aperture's
+                indoor_shades instead of outdoor_shades. Default: False.
             base_name: Optional base name for the shade objects. If None, the default
                 is InBorder or OutBorder depending on whether indoor is True.
+        
+        Returns:
+            A list of the new Shade objects that have been generated.
         """
         extru_vec = self.normal if indoor is False else self.normal.reverse()
         extru_vec = extru_vec * depth
@@ -315,9 +382,10 @@ class Aperture(_BaseWithShade):
             self.add_indoor_shades(extrusion)
         else:
             self.add_outdoor_shades(extrusion)
+        return extrusion
 
     def louvers_by_count(self, louver_count, depth, offset=0, angle=0,
-                         contour_vector=Vector3D(0, 0, 1), flip_start_side=False,
+                         contour_vector=Vector2D(0, 1), flip_start_side=False,
                          indoor=False, tolerance=0, base_name=None):
         """Add a series of louvered Shade objects covering this Aperture.
 
@@ -328,8 +396,11 @@ class Aperture(_BaseWithShade):
                 Default is 0 for no offset.
             angle: A number for the for an angle to rotate the louvers in degrees.
                 Default is 0 for no rotation.
-            contour_vector: A Vector3D for the direction along which contours
-                are generated. Default is Z-Axis, which generates horizontal louvers.
+            contour_vector: A Vector2D for the direction along which contours
+                are generated. This 2D vector will be interpreted into a 3D vector
+                within the plane of this Aperture. (0, 1) will usually generate
+                horizontal contours in 3D space, (1, 0) will generate vertical
+                contours, and (1, 1) will generate diagonal contours. Default: (0, 1).
             flip_start_side: Boolean to note whether the side the louvers start from
                 should be flipped. Default is False to have louvers on top or right.
                 Setting to True will start contours on the bottom or left.
@@ -341,6 +412,9 @@ class Aperture(_BaseWithShade):
                 no matter how small.
             base_name: Optional base name for the shade objects. If None, the default
                 is InShd or OutShd depending on whether indoor is True.
+        
+        Returns:
+            A list of the new Shade objects that have been generated.
         """
         assert louver_count > 0, 'louver_count must be greater than 0.'
         angle = math.radians(angle)
@@ -359,9 +433,10 @@ class Aperture(_BaseWithShade):
             self.add_indoor_shades(louvers)
         else:
             self.add_outdoor_shades(louvers)
+        return louvers
 
     def louvers_by_distance_between(
-            self, distance, depth, offset=0, angle=0, contour_vector=Vector3D(0, 0, 1),
+            self, distance, depth, offset=0, angle=0, contour_vector=Vector2D(0, 1),
             flip_start_side=False, indoor=False, tolerance=0, base_name=None):
         """Add a series of louvered Shade objects covering this Aperture.
 
@@ -372,8 +447,11 @@ class Aperture(_BaseWithShade):
                 Default is 0 for no offset.
             angle: A number for the for an angle to rotate the louvers in degrees.
                 Default is 0 for no rotation.
-            contour_vector: A Vector3D for the direction along which contours
-                are generated. Default is Z-Axis, which generates horizontal louvers.
+            contour_vector: A Vector2D for the direction along which contours
+                are generated. This 2D vector will be interpreted into a 3D vector
+                within the plane of this Aperture. (0, 1) will usually generate
+                horizontal contours in 3D space, (1, 0) will generate vertical
+                contours, and (1, 1) will generate diagonal contours. Default: (0, 1).
             flip_start_side: Boolean to note whether the side the louvers start from
                 should be flipped. Default is False to have contours on top or right.
                 Setting to True will start contours on the bottom or left.
@@ -385,6 +463,9 @@ class Aperture(_BaseWithShade):
                 no matter how small.
             base_name: Optional base name for the shade objects. If None, the default
                 is InShd or OutShd depending on whether indoor is True.
+        
+        Returns:
+            A list of the new Shade objects that have been generated.
         """
         angle = math.radians(angle)
         louvers = []
@@ -402,6 +483,7 @@ class Aperture(_BaseWithShade):
             self.add_indoor_shades(louvers)
         else:
             self.add_outdoor_shades(louvers)
+        return louvers
 
     def move(self, moving_vec):
         """Move this Aperture along a vector.
